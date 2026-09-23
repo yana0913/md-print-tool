@@ -4,15 +4,7 @@
 
 纯前端实现（单个 `index.html`），无需服务器、无需联网安装任何东西，可直接部署到 GitHub Pages。
 
-## 本地使用
 
-直接双击打开 `index.html`（推荐 Chrome / Edge 浏览器），或在本目录启动一个静态服务：
-
-```bash
-cd md-print-tool
-python3 -m http.server 8080
-# 浏览器打开 http://localhost:8080
-```
 
 ## 导出 PDF 的正确姿势
 
@@ -25,21 +17,6 @@ python3 -m http.server 8080
    - 缩放：**100%（默认）**
    - 选项：勾选**背景图形**；**不要**勾选"页眉和页脚"（页码已由工具生成）
 
-## 部署到 GitHub Pages
-
-```bash
-git init
-git add index.html sample.md README.md
-git commit -m "MD 双栏排版工具"
-git remote add origin git@github.com:<你的用户名>/md-print-tool.git
-git push -u origin main
-```
-
-然后到仓库 **Settings → Pages → Build and deployment**，Source 选 `Deploy from a branch`，分支选 `main`、目录选 `/ (root)`，保存。一两分钟后访问：
-
-```
-https://<你的用户名>.github.io/md-print-tool/
-```
 
 ## 说明
 
