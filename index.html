@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MD 双栏排版工具</title>
+<script>
+  window.PagedConfig = { auto: false };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/pagedjs@0.4.3/dist/paged.polyfill.min.js"
+        onerror="loadFallbackPaged()"></script>
+<script>
+  function loadFallbackPaged() {
+    var s = document.createElement('script');
+    s.src = 'https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js';
+    s.onerror = function () { window.__pagedFailed = true; };
+    document.head.appendChild(s);
+  }
+</script>
+<style>
+  :root {
+    --accent: #2563eb;
+    --border: #e2e5ea;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #eceef1;
+    color: #1f2329;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  }
+
+  /* ---------- 工具栏 ---------- */
+  #toolbar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding: 10px 18px;
+    background: #fff; border-bottom: 1px solid var(--border);
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  #toolbar .brand { font-size: 15px; font-weight: 700; margin-right: 8px; white-space: nowrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border);
+    background: #fff; color: #1f2329; font-size: 13px; cursor: pointer;
+    transition: all .15s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { opacity: .9; color: #fff; }
+  .field { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #555; }
+  .field select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; background: #fff; }
+  .spacer { flex: 1; }
+  #status { font-size: 12px; color: #888; max-width: 100%; }
+  .hint-bar {
+    padding: 6px 18px; font-size: 12px; color: #8a6d3b;
+    background: #fdf6e3; border-bottom: 1px solid #f0e6c8;
+  }
+
+  /* ---------- 预览区 ---------- */
+  #preview { padding: 24px 12px 60px; }
+  .pagedjs_pages { display: flex; flex-direction: column; align-items: center; }
+  .pagedjs_page {
+    background: #fff;
+    box-shadow: 0 2px 14px rgba(0,0,0,.15);
+    margin: 0 0 28px;
+  }
+  #empty {
+    max-width: 640px; margin: 60px auto; padding: 48px;
+    background: #fff; border: 2px dashed var(--border); border-radius: 12px;
+    text-align: center; color: #666; font-size: 14px; line-height: 2;
+  }
+  #empty.dragover { border-color: var(--accent); color: var(--accent); }
+
+  /* ---------- 打印 ---------- */
+  @media print {
+    #toolbar, .hint-bar, #empty { display: none !important; }
+    body { background: #fff; }
+    #preview { padding: 0; }
+    .pagedjs_page { box-shadow: none; margin: 0; }
+  }
+</style>
+<!-- 排版样式（会被 paged.js 克隆进分页结果） -->
+<style id="layout-css">
+  @page {
+    size: A4;
+    margin: 3cm 3cm 3cm 3cm;
+    @bottom-center {
+      content: counter(page);
+      font-family: SimSun, "宋体", "Songti SC", "STSong", serif;
+      font-size: 9pt;
+      color: #666;
+    }
+  }
+  .md-content {
+    font-family: SimSun, "宋体", "Songti SC", "STSong", serif;
+    font-size: 10.5pt;
+    line-height: 1.7;
+    text-align: justify;
+    text-align-last: left;
+    column-count: 2;
+    column-gap: 8mm;
+    column-rule: 0.4pt solid #ddd;
+    color: #000;
+    word-break: break-word;
+  }
+  .md-content h1, .md-content h2, .md-content h3,
+  .md-content h4, .md-content h5, .md-content h6 {
+    font-family: SimSun, "宋体", "Songti SC", "STSong", serif;
+    font-weight: bold;
+    break-after: avoid;
+    break-inside: avoid;
+    margin: 0.8em 0 0.5em;
+    line-height: 1.4;
+    text-align: left;
+  }
+  .md-content h1 { font-size: 15pt; }
+  .md-content h2 { font-size: 13pt; }
+  .md-content h3 { font-size: 11.5pt; }
+  .md-content h4 { font-size: 10.5pt; }
+  .md-content p { margin: 0 0 0.55em; text-indent: 2em; }
+  .md-content.no-indent p { text-indent: 0; }
+  .md-content ul, .md-content ol { margin: 0.3em 0 0.7em; padding-left: 1.6em; }
+  .md-content li { margin-bottom: 0.25em; }
+  .md-content blockquote {
+    margin: 0.6em 0; padding: 4px 10px;
+    border-left: 3px solid #bbb; background: #f6f6f6; color: #444;
+  }
+  .md-content blockquote p { text-indent: 0; }
+  .md-content pre {
+    background: #f6f6f6; border: 0.5pt solid #ddd; padding: 6px 8px;
+    font-size: 8.5pt; line-height: 1.5; white-space: pre-wrap;
+    break-inside: avoid; margin: 0.5em 0 0.8em;
+    font-family: "SF Mono", Consolas, Menlo, monospace;
+  }
+  .md-content code { font-family: "SF Mono", Consolas, Menlo, monospace; font-size: 0.88em; }
+  .md-content table {
+    width: 100%; border-collapse: collapse; font-size: 9pt;
+    margin: 0.5em 0 0.9em; break-inside: avoid;
+  }
+  .md-content th, .md-content td { border: 0.5pt solid #999; padding: 3px 6px; text-align: left; }
+  .md-content th { background: #f0f0f0; }
+  .md-content img { max-width: 100%; height: auto; break-inside: avoid; }
+  .md-content hr { border: none; border-top: 0.5pt solid #aaa; margin: 1em 0; }
+  .md-content a { color: #000; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <span class="brand">MD 双栏排版工具</span>
+  <label class="btn" for="fileInput">📄 上传 Markdown</label>
+  <input type="file" id="fileInput" accept=".md,.markdown,.txt" style="display:none">
+  <button class="btn" id="sampleBtn">示例文档</button>
+  <span class="field">字号
+    <select id="fontSize">
+      <option value="10.5pt" selected>五号（10.5pt）</option>
+      <option value="12pt">小四（12pt）</option>
+      <option value="14pt">四号（14pt）</option>
+      <option value="9pt">小五（9pt）</option>
+    </select>
+  </span>
+  <label class="field"><input type="checkbox" id="indent" checked> 首行缩进 2 字符</label>
+  <div class="spacer"></div>
+  <button class="btn primary" id="printBtn">🖨 导出 PDF</button>
+</div>
+<div class="hint-bar">
+  版式：A4 · 上下左右边距 3cm · 宋体 · 双栏 · 底部居中页码。导出 PDF 时请在打印对话框中选择：纸张 A4、边距“无”、缩放 100%、勾选“背景图形”。
+</div>
+
+<div id="preview">
+  <div id="empty">
+    <div style="font-size:40px;margin-bottom:8px;">📝</div>
+    点击左上角「上传 Markdown」选择 .md 文件<br>
+    或直接把文件拖到页面任意位置
+  </div>
+</div>
+
+<script>
+/* ================= Markdown 解析（内置轻量解析器，无外部依赖） ================= */
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function inline(t) {
+  t = escapeHtml(t);
+  t = t.replace(/!\[([^\]]*)\]\(([^)\s"]+)[^)]*\)/g, '<img alt="$1" src="$2">');
+  t = t.replace(/\[([^\]]+)\]\(([^)\s"]+)[^)]*\)/g, '<a href="$2">$1</a>');
+  t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  t = t.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  t = t.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+  t = t.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+  t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+  return t;
+}
+function splitRow(line) {
+  var cells = line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+  return cells.map(function (c) { return c.trim(); });
+}
+function buildTable(rows) {
+  var head = splitRow(rows[0]);
+  var html = '<table><thead><tr>' + head.map(function (c) { return '<th>' + inline(c) + '</th>'; }).join('') + '</tr></thead><tbody>';
+  for (var r = 2; r < rows.length; r++) {
+    var cells = splitRow(rows[r]);
+    html += '<tr>' + cells.map(function (c) { return '<td>' + inline(c) + '</td>'; }).join('') + '</tr>';
+  }
+  return html + '</tbody></table>';
+}
+function parseMarkdown(md) {
+  var lines = md.replace(/\r\n?/g, '\n').split('\n');
+  var html = '', i = 0, m;
+  while (i < lines.length) {
+    var line = lines[i];
+    if (/^\s*```/.test(line)) {
+      i++;
+      var code = '';
+      while (i < lines.length && !/^\s*```/.test(lines[i])) { code += lines[i] + '\n'; i++; }
+      i++;
+      html += '<pre><code>' + escapeHtml(code.replace(/\n$/, '')) + '</code></pre>';
+      continue;
+    }
+    if (/^\s*$/.test(line)) { i++; continue; }
+    if ((m = line.match(/^(#{1,6})\s+(.*)$/))) {
+      var lv = m[1].length;
+      html += '<h' + lv + '>' + inline(m[2]) + '</h' + lv + '>';
+      i++; continue;
+    }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { html += '<hr>'; i++; continue; }
+    if (/^\s*\|/.test(line) && i + 1 < lines.length &&
+        /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1]) && lines[i + 1].indexOf('-') !== -1) {
+      var rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) { rows.push(lines[i]); i++; }
+      html += buildTable(rows);
+      continue;
+    }
+    if (/^\s*>/.test(line)) {
+      var buf = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) { buf.push(lines[i].replace(/^\s*>\s?/, '')); i++; }
+      html += '<blockquote>' + parseMarkdown(buf.join('\n')) + '</blockquote>';
+      continue;
+    }
+    var listRe = /^\s*([-*+]|\d+[.)])\s+(.+)$/;
+    if (listRe.test(line)) {
+      var ordered = /^\s*\d/.test(line);
+      var itemRe = ordered ? /^\s*\d+[.)]\s+(.+)$/ : /^\s*[-*+]\s+(.+)$/;
+      var items = [];
+      while (i < lines.length && (m = lines[i].match(itemRe))) { items.push('<li>' + inline(m[1]) + '</li>'); i++; }
+      html += (ordered ? '<ol>' : '<ul>') + items.join('') + (ordered ? '</ol>' : '</ul>');
+      continue;
+    }
+    var para = [line]; i++;
+    var stopRe = /^\s*(#{1,6}\s|```|>|[-*+]\s|\d+[.)]\s|\||-{3,}\s*$|\*{3,}\s*$)/;
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !stopRe.test(lines[i])) { para.push(lines[i]); i++; }
+    html += '<p>' + inline(para.join(' ')) + '</p>';
+  }
+  return html;
+}
+
+/* ================= 分页渲染 ================= */
+var previewEl = document.getElementById('preview');
+var currentHtml = null;
+var layoutCssTemplate = document.getElementById('layout-css').textContent;
+
+function applyLayoutSettings() {
+  var fs = document.getElementById('fontSize').value;
+  document.getElementById('layout-css').textContent =
+    layoutCssTemplate.replace('font-size: 10.5pt;', 'font-size: ' + fs + ';');
+}
+
+async function renderPaged() {
+  if (!currentHtml) return;
+  applyLayoutSettings();
+  var noIndent = !document.getElementById('indent').checked;
+  var contentHtml = '<div class="md-content' + (noIndent ? ' no-indent' : '') + '">' + currentHtml + '</div>';
+
+  // 清理上一次渲染
+  previewEl.innerHTML = '';
+  document.querySelectorAll('style[data-pagedjs-inserted]').forEach(function (s) { s.remove(); });
+
+  if (window.Paged && window.Paged.Previewer) {
+    try {
+      var previewer = new Paged.Previewer();
+      setStatus('正在分页排版…');
+      var flow = await previewer.preview(contentHtml, undefined, previewEl);
+      setStatus('共 ' + flow.total + ' 页 · A4 · 双栏 · 边距 3cm · 宋体');
+      return;
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  // paged.js 不可用时的降级：直接流式排版，打印时用 Chrome 自带页脚加页码
+  previewEl.innerHTML = '<div style="max-width:180mm;margin:0 auto;background:#fff;padding:20mm;box-shadow:0 2px 14px rgba(0,0,0,.15)">' + contentHtml + '</div>';
+  setStatus('⚠ 分页引擎加载失败（可能因网络无法访问 CDN），已用简化预览。打印时请在 Chrome 打印对话框勾选“页眉和页脚”以显示页码。');
+}
+
+function setStatus(t) {
+  var hint = document.querySelector('.hint-bar');
+  hint.textContent = t || '版式：A4 · 上下左右边距 3cm · 宋体 · 双栏 · 底部居中页码。导出 PDF 时请在打印对话框中选择：纸张 A4、边距“无”、缩放 100%、勾选“背景图形”。';
+}
+
+/* ================= 文件读取（自动识别 UTF-8 / GBK） ================= */
+async function readText(file) {
+  var buf = await file.arrayBuffer();
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+  catch (e) { return new TextDecoder('gb18030').decode(buf); }
+}
+function handleFile(file) {
+  if (!file) return;
+  readText(file).then(function (text) {
+    document.title = file.name.replace(/\.(md|markdown|txt)$/i, '');
+    currentHtml = parseMarkdown(text);
+    renderPaged();
+  });
+}
+
+document.getElementById('fileInput').addEventListener('change', function (e) {
+  handleFile(e.target.files[0]);
+});
+document.addEventListener('dragover', function (e) { e.preventDefault(); });
+document.addEventListener('drop', function (e) {
+  e.preventDefault();
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+document.getElementById('fontSize').addEventListener('change', renderPaged);
+document.getElementById('indent').addEventListener('change', renderPaged);
+document.getElementById('printBtn').addEventListener('click', function () {
+  if (!currentHtml) { alert('请先上传一个 Markdown 文档'); return; }
+  window.print();
+});
+document.getElementById('sampleBtn').addEventListener('click', function () {
+  loadDocFromUrl('sample.md');
+});
+function loadDocFromUrl(url) {
+  fetch(url).then(function (r) {
+    if (!r.ok) throw new Error(r.status);
+    return r.text();
+  }).then(function (t) {
+    document.title = url.replace(/\.(md|markdown|txt)$/i, '');
+    currentHtml = parseMarkdown(t);
+    renderPaged();
+  }).catch(function () { alert('未找到 ' + url); });
+}
+// 支持 ?doc=xxx.md 直接加载同目录下的文档
+(function () {
+  var doc = new URLSearchParams(location.search).get('doc');
+  if (doc) loadDocFromUrl(doc);
+})();
+</script>
+</body>
+</html>
