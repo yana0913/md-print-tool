@@ -17,7 +17,7 @@
     document.head.appendChild(s);
   }
 </script>
-<style>
+<style data-pagedjs-ignore>
   :root {
     --accent: #2563eb;
     --border: #e2e5ea;
@@ -50,6 +50,7 @@
   .btn.primary:hover { opacity: .9; color: #fff; }
   .field { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #555; }
   .field select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; background: #fff; }
+  .field input[type=number] { width: 3.2em; padding: 5px 4px; margin: 0 2px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
   .spacer { flex: 1; }
   #status { font-size: 12px; color: #888; max-width: 100%; }
   .hint-bar {
@@ -161,11 +162,17 @@
     </select>
   </span>
   <label class="field"><input type="checkbox" id="indent" checked> 首行缩进 2 字符</label>
+  <span class="field">边距(cm)
+    上<input type="number" id="marginTop" value="3" min="0.5" max="5" step="0.5">
+    下<input type="number" id="marginBottom" value="3" min="0.5" max="5" step="0.5">
+    左<input type="number" id="marginLeft" value="3" min="0.5" max="5" step="0.5">
+    右<input type="number" id="marginRight" value="3" min="0.5" max="5" step="0.5">
+  </span>
   <div class="spacer"></div>
   <button class="btn primary" id="printBtn">🖨 导出 PDF</button>
 </div>
 <div class="hint-bar">
-  版式：A4 · 上下左右边距 3cm · 宋体 · 双栏 · 底部居中页码。导出 PDF 时请在打印对话框中选择：纸张 A4、边距“无”、缩放 100%、勾选“背景图形”。
+  版式：A4 · 边距可调（默认上下左右 3cm）· 宋体 · 双栏 · 底部居中页码。导出 PDF 时请在打印对话框中选择：纸张 A4、边距“无”、缩放 100%、勾选“背景图形”、<b>不要勾选“页眉和页脚”</b>（页码已由工具生成，勾选后浏览器会再加一层页码并缩小版面）。
 </div>
 
 <div id="preview">
@@ -260,31 +267,55 @@ var previewEl = document.getElementById('preview');
 var currentHtml = null;
 var layoutCssTemplate = document.getElementById('layout-css').textContent;
 
+function getMargins() {
+  function v(id) {
+    var n = parseFloat(document.getElementById(id).value);
+    return (isNaN(n) ? 3 : Math.min(5, Math.max(0.5, n)));
+  }
+  return { top: v('marginTop'), bottom: v('marginBottom'), left: v('marginLeft'), right: v('marginRight') };
+}
+
 function applyLayoutSettings() {
   var fs = document.getElementById('fontSize').value;
-  document.getElementById('layout-css').textContent =
-    layoutCssTemplate.replace('font-size: 10.5pt;', 'font-size: ' + fs + ';');
+  var m = getMargins();
+  var css = layoutCssTemplate
+    .replace('font-size: 10.5pt;', 'font-size: ' + fs + ';')
+    .replace('margin: 3cm 3cm 3cm 3cm;',
+      'margin: ' + m.top + 'cm ' + m.right + 'cm ' + m.bottom + 'cm ' + m.left + 'cm;');
+  // paged.js 每次渲染会把文档里的 <style> 移走处理，所以这里每次重建
+  var old = document.getElementById('layout-css');
+  if (old) old.remove();
+  var el = document.createElement('style');
+  el.id = 'layout-css';
+  el.textContent = css;
+  document.head.appendChild(el);
 }
+
+var renderToken = 0;
 
 async function renderPaged() {
   if (!currentHtml) return;
+  var myToken = ++renderToken; // 并发的旧渲染自动作废
   applyLayoutSettings();
   var noIndent = !document.getElementById('indent').checked;
   var contentHtml = '<div class="md-content' + (noIndent ? ' no-indent' : '') + '">' + currentHtml + '</div>';
 
-  // 清理上一次渲染
+  // 清理上一次渲染（paged.js 生成的样式属性名是 data-pagedjs-inserted-styles）
   previewEl.innerHTML = '';
-  document.querySelectorAll('style[data-pagedjs-inserted]').forEach(function (s) { s.remove(); });
+  document.querySelectorAll('style[data-pagedjs-inserted-styles]').forEach(function (s) { s.remove(); });
 
   if (window.Paged && window.Paged.Previewer) {
     try {
       var previewer = new Paged.Previewer();
       setStatus('正在分页排版…');
       var flow = await previewer.preview(contentHtml, undefined, previewEl);
-      setStatus('共 ' + flow.total + ' 页 · A4 · 双栏 · 边距 3cm · 宋体');
+      if (myToken !== renderToken) return; // 已有更新的渲染，丢弃本次结果
+      var m = getMargins();
+      setStatus('共 ' + flow.total + ' 页 · A4 · 双栏 · 边距 上' + m.top + ' 下' + m.bottom + ' 左' + m.left + ' 右' + m.right + 'cm · 宋体');
       return;
     } catch (e) {
       console.error(e);
+      if (myToken !== renderToken) return;
     }
   }
   // paged.js 不可用时的降级：直接流式排版，打印时用 Chrome 自带页脚加页码
@@ -294,7 +325,7 @@ async function renderPaged() {
 
 function setStatus(t) {
   var hint = document.querySelector('.hint-bar');
-  hint.textContent = t || '版式：A4 · 上下左右边距 3cm · 宋体 · 双栏 · 底部居中页码。导出 PDF 时请在打印对话框中选择：纸张 A4、边距“无”、缩放 100%、勾选“背景图形”。';
+  hint.textContent = t || '版式：A4 · 边距可调（默认上下左右 3cm）· 宋体 · 双栏 · 底部居中页码。导出 PDF 时请在打印对话框中选择：纸张 A4、边距“无”、缩放 100%、勾选“背景图形”、不要勾选“页眉和页脚”。';
 }
 
 /* ================= 文件读取（自动识别 UTF-8 / GBK） ================= */
@@ -322,6 +353,13 @@ document.addEventListener('drop', function (e) {
 });
 document.getElementById('fontSize').addEventListener('change', renderPaged);
 document.getElementById('indent').addEventListener('change', renderPaged);
+['marginTop', 'marginBottom', 'marginLeft', 'marginRight'].forEach(function (id) {
+  var timer = null;
+  document.getElementById(id).addEventListener('input', function () {
+    clearTimeout(timer);
+    timer = setTimeout(renderPaged, 400); // 防抖，避免连续输入触发并发渲染
+  });
+});
 document.getElementById('printBtn').addEventListener('click', function () {
   if (!currentHtml) { alert('请先上传一个 Markdown 文档'); return; }
   window.print();
